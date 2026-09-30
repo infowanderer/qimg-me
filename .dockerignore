@@ -1,0 +1,12 @@
+.git
+.local
+.agents
+attached_assets
+node_modules
+**/node_modules
+**/dist
+**/.turbo
+**/*.tsbuildinfo
+artifacts/api-server/media
+deploy/umbrel/.env
+*.log

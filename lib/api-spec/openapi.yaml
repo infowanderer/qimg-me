@@ -1,0 +1,347 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: media
+    description: Browse and safely manage files inside the configured media root
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /media/entries:
+    get:
+      operationId: getMediaEntries
+      tags: [media]
+      summary: List a media directory
+      parameters:
+        - name: path
+          in: query
+          required: false
+          description: Directory path relative to the configured media root
+          schema:
+            type: string
+            default: ""
+      responses:
+        "200":
+          description: Directory listing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaDirectory"
+        "400":
+          description: Invalid directory path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Hostname or origin is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: Media root is not configured or unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /media/content:
+    get:
+      operationId: getMediaContent
+      tags: [media]
+      summary: Stream a supported image or video file
+      parameters:
+        - name: path
+          in: query
+          required: true
+          description: File path relative to the configured media root
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Media file contents
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: Partial media file contents
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid file path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Hostname or origin is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "415":
+          description: File type cannot be previewed in a browser
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /media/tags:
+    post:
+      operationId: applyTags
+      tags: [media]
+      summary: Add, remove, or edit filename tags for selected files
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagOperationInput"
+      responses:
+        "200":
+          description: Tag operation completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagOperationResult"
+        "400":
+          description: Invalid tag input, unsupported file, or unsafe path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Hostname or origin is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: A destination name already exists; no files were changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: Filesystem operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /media/transfers:
+    post:
+      operationId: transferFiles
+      tags: [media]
+      summary: Copy or move selected files to a directory inside the media root
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FileTransferInput"
+      responses:
+        "200":
+          description: Transfer results, including any per-file failures
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileTransferResult"
+        "400":
+          description: Invalid destination, unsupported file, or unsafe path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Hostname or origin is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: A destination name already exists; no files were changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    MediaEntry:
+      type: object
+      properties:
+        path:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [directory, image, video, other, symlink]
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+        modifiedAt:
+          type: string
+          format: date-time
+        mediaType:
+          type: [string, "null"]
+        tags:
+          type: array
+          items:
+            type: string
+        contentUrl:
+          type: [string, "null"]
+      required: [path, name, kind, size, modifiedAt, mediaType, tags, contentUrl]
+    MediaDirectory:
+      type: object
+      properties:
+        currentPath:
+          type: string
+        parentPath:
+          type: [string, "null"]
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/MediaEntry"
+        totalEntries:
+          type: integer
+          minimum: 0
+        totalMedia:
+          type: integer
+          minimum: 0
+      required: [currentPath, parentPath, entries, totalEntries, totalMedia]
+    TagOperationInput:
+      type: object
+      properties:
+        operation:
+          type: string
+          enum: [add, remove, edit]
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 250
+          uniqueItems: true
+          items:
+            type: string
+        tags:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+        oldTag:
+          type: string
+        newTag:
+          type: string
+      required: [operation, paths]
+    TagFileResult:
+      type: object
+      properties:
+        sourcePath:
+          type: string
+        destinationPath:
+          type: string
+        status:
+          type: string
+          enum: [renamed, unchanged]
+      required: [sourcePath, destinationPath, status]
+    TagOperationResult:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/TagFileResult"
+        changedCount:
+          type: integer
+          minimum: 0
+        unchangedCount:
+          type: integer
+          minimum: 0
+      required: [results, changedCount, unchangedCount]
+    FileTransferInput:
+      type: object
+      properties:
+        operation:
+          type: string
+          enum: [copy, move]
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 250
+          uniqueItems: true
+          items:
+            type: string
+        destinationDirectory:
+          type: string
+      required: [operation, paths, destinationDirectory]
+    TransferFileResult:
+      type: object
+      properties:
+        sourcePath:
+          type: string
+        destinationPath:
+          type: string
+        status:
+          type: string
+          enum: [copied, moved, failed]
+        error:
+          type: [string, "null"]
+      required: [sourcePath, destinationPath, status, error]
+    FileTransferResult:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/TransferFileResult"
+        successCount:
+          type: integer
+          minimum: 0
+        failureCount:
+          type: integer
+          minimum: 0
+      required: [results, successCount, failureCount]
+
